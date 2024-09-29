@@ -3,9 +3,12 @@
 """
 @author: Chenfei
 @contact:chenfei.ye@foxmail.com
-@version: 4.0
+@version: 4.3
 @file: run.py
-@time: 2023/11/21
+@time: 2024/09/29
+# update: support multi session
+# update: alps in MNI space
+# update: added Schaefer atlas 7networks/17networks 
 
 """
 
@@ -16,6 +19,10 @@ import numpy as np
 import json
 import pandas as pd
 import object_visualization
+import matplotlib.pyplot as plt
+from nilearn import plotting
+import bids
+from bids import BIDSLayout
 
 from designer.fitting import dwipy as dp
 from designer.preprocessing import util
@@ -404,17 +411,25 @@ def statistic_summary_parcel(dmri_map_path, t1_label_path, lookup_table_path, st
         del statistics_dict, statistics_json_path
 
 
-def runSubject(args, subject_label):
+def runSubject(args, subject_label, session_label):
     global workingDir, tempDir, cleanup, resume
     label = 'sub-' + subject_label
-    output_dir = os.path.join(args.output_dir, label)
+    if session_label:
+        dmriprep_dir = os.path.join(args.bids_dir, 'derivatives', 'dmri_prep', label,  'ses-' + session_label)
+        output_dir = os.path.join(args.output_dir, label,  'ses-' + session_label)
+        app_console('Launching participant-level analysis for subject \'' + label + '\'' + ' and session \'' + session_label + '\'')
+    else:
+        dmriprep_dir = os.path.join(args.bids_dir, 'derivatives', 'dmri_prep', label)
+        output_dir = os.path.join(args.output_dir, label)
+        app_console('Launching participant-level analysis for subject \'' + label + '\'')
+
     if os.path.exists(output_dir):
         app_warn('Output directory for subject \'' + label + '\' already exists. May override output files if new output creates')
         status_override = True
     else:
         status_override = False
     
-    dmriprep_dir = os.path.join(args.bids_dir, 'derivatives', 'dmri_prep', label)
+    
     if not os.path.exists(dmriprep_dir):
         app_console('dmri_dir: '+ dmriprep_dir)
         app_error('Failed to detect output folder of BIDS-dmriprep for subject' + label)
@@ -534,6 +549,71 @@ def runSubject(args, subject_label):
             command('mrcalc ' + dti_mapping_dir + '/RD.nii.gz 0.005 -le ' + dti_mapping_dir + 
                     '/RD.nii.gz 0.005 -if - | mrcalc - 0.0 -gt - 0.0 -if ' + dti_mapping_dir + '/RD.nii.gz -force')
             
+    #-----------------------------------------------------------------
+    # Step 1.1: ALPS quantification
+    #-----------------------------------------------------------------
+    if 'alps' in modes_ls:
+        app_console('run Step 1.1: ALPS quantification')
+        # https://github.com/gbarisano/alps/blob/main/alps.sh
+        alps_mapping_dir = 'ALPS_quantification'
+        
+        if args.resume and os.path.exists(alps_mapping_dir):  # if -resume, check if output file exist or not
+            app_console('ALPS_quantification folder found, skip this step')
+        else:
+            os.mkdir(os.path.join(tempDir, alps_mapping_dir))
+    
+            dwi_mni_mif = os.path.join(tempDir,alps_mapping_dir, 'dwi_mni.mif')
+            dwi_mni_tensor = os.path.join(tempDir,alps_mapping_dir, 'dti_mni_tensor.nii.gz')
+            dxx_nii = os.path.join(tempDir,alps_mapping_dir, 'dxx_mni.nii.gz')
+            dyy_nii = os.path.join(tempDir,alps_mapping_dir, 'dyy_mni.nii.gz')
+            dzz_nii = os.path.join(tempDir,alps_mapping_dir, 'dzz_mni.nii.gz')
+            atlases_ls = args.atlases
+            proj_L = '/atlases/ROIs_JHU_ALPS/L_SCR.nii.gz'
+            proj_R = '/atlases/ROIs_JHU_ALPS/R_SCR.nii.gz'
+            assoc_L = '/atlases/ROIs_JHU_ALPS/L_SLF.nii.gz'
+            assoc_R = '/atlases/ROIs_JHU_ALPS/R_SLF.nii.gz'
+            # command('mrconvert ' + input_dwi_mni_nii + ' ' + dwi_mni_mif + ' -json_import ' +
+            #         input_dwi_json + ' -fslgrad ' + input_dwi_mni_bvec + ' ' + input_dwi_mni_bval)
+            # command('dwi2tensor ' + dwi_mni_mif + ' ' + dwi_mni_tensor)
+            command('dtifit --data=' + input_dwi_mni_nii + ' --out=' + os.path.join(tempDir,alps_mapping_dir, 'dti_mni') + ' --mask=' + input_dwi_mni_mask_nii + ' --bvecs=' +
+                     input_dwi_mni_bvec + ' --bvals=' + input_dwi_mni_bval + ' --save_tensor')
+            command('fslroi ' + dwi_mni_tensor + ' ' + dxx_nii + ' 0 1')
+            command('fslroi ' + dwi_mni_tensor + ' ' + dyy_nii + ' 3 1')
+            command('fslroi ' + dwi_mni_tensor + ' ' + dzz_nii + ' 5 1')
+
+            alps_dic = {}
+            from nilearn.maskers import NiftiLabelsMasker
+            alps_dic['x_proj_L'] = float(NiftiLabelsMasker(proj_L, standardize=True, verbose=0).fit_transform(dxx_nii)[0][0])
+            alps_dic['x_proj_R'] = float(NiftiLabelsMasker(proj_R, standardize=True, verbose=0).fit_transform(dxx_nii)[0][0])
+
+            alps_dic['x_assoc_L'] = float(NiftiLabelsMasker(assoc_L, standardize=True, verbose=0).fit_transform(dxx_nii)[0][0])
+            alps_dic['x_assoc_R'] = float(NiftiLabelsMasker(assoc_R, standardize=True, verbose=0).fit_transform(dxx_nii)[0][0])
+
+            alps_dic['y_proj_L'] = float(NiftiLabelsMasker(proj_L, standardize=True, verbose=0).fit_transform(dyy_nii)[0][0])
+            alps_dic['y_proj_R'] = float(NiftiLabelsMasker(proj_R, standardize=True, verbose=0).fit_transform(dyy_nii)[0][0])
+
+            alps_dic['z_assoc_L'] = float(NiftiLabelsMasker(assoc_L, standardize=True, verbose=0).fit_transform(dzz_nii)[0][0])
+            alps_dic['z_assoc_R'] = float(NiftiLabelsMasker(assoc_R, standardize=True, verbose=0).fit_transform(dzz_nii)[0][0])
+
+
+            # alps_dic['x_proj_L'] = img_statistics(dxx_nii, mask=proj_L).mean 
+            # alps_dic['x_proj_R'] = img_statistics(dxx_nii, mask=proj_R).mean
+
+            # alps_dic['x_assoc_L'] = img_statistics(dxx_nii, mask=assoc_L).mean
+            # alps_dic['x_assoc_R'] = img_statistics(dxx_nii, mask=assoc_R).mean
+
+            # alps_dic['y_proj_L'] = img_statistics(dyy_nii, mask=proj_L).mean
+            # alps_dic['y_proj_R'] = img_statistics(dyy_nii, mask=proj_R).mean
+
+            # alps_dic['z_assoc_L'] = img_statistics(dzz_nii, mask=assoc_L).mean
+            # alps_dic['z_assoc_R'] = img_statistics(dzz_nii, mask=assoc_R).mean
+
+            alps_dic['alps_L'] = ((alps_dic['x_proj_L'] + alps_dic['x_assoc_L'])/2)/((alps_dic['y_proj_L']+ alps_dic['z_assoc_L'])/2)
+            alps_dic['alps_R'] = ((alps_dic['x_proj_R'] + alps_dic['x_assoc_R'])/2)/((alps_dic['y_proj_R']+ alps_dic['z_assoc_R'])/2)
+            alps_dic['alps'] = (alps_dic['alps_L']+alps_dic['alps_L'])/2
+
+            with open(os.path.join(alps_mapping_dir, 'alps.json'), 'w+') as result_file:
+                json.dump(alps_dic, result_file, sort_keys=True, indent=4, separators=(',', ': '))
 
     #-----------------------------------------------------------------
     # Step 2: TractSeg
@@ -943,6 +1023,61 @@ def runSubject(args, subject_label):
                 parc_lut_file = os.path.join(mrtrix_lut_dir, 'hcpmmp1_original.txt')
                 mrtrix_lut_file = os.path.join(mrtrix_lut_dir, 'hcpmmp1_ordered.txt')
                 parc_T1w_nii_path = os.path.join(connectome_dir, label + '_T1w_hcpmmp.nii.gz')
+            
+            elif atlas_name == 'schaefer100x7_T1w':
+                parc_native_path = os.path.join(freesurfer_path, 'mri', 'aparc.schaefer100x7+aseg.mgz')
+                if not os.path.exists(parc_native_path):
+                    app_error('Failed to detect ' + parc_native_path + ', should run docker image bids-freesurfer /surf_conv.py first')
+                
+                parc_lut_file = os.path.join(mrtrix_lut_dir, 'schaefer100x7_original.txt')
+                mrtrix_lut_file = os.path.join(mrtrix_lut_dir, 'schaefer100x7_ordered.txt')
+                parc_T1w_nii_path = os.path.join(connectome_dir, label + '_T1w_schaefer100x7.nii.gz')
+        
+            elif atlas_name == 'schaefer200x7_T1w':
+                parc_native_path = os.path.join(freesurfer_path, 'mri', 'aparc.schaefer200x7+aseg.mgz')
+                if not os.path.exists(parc_native_path):
+                    app_error('Failed to detect ' + parc_native_path + ', should run docker image bids-freesurfer /surf_conv.py first')
+                
+                parc_lut_file = os.path.join(mrtrix_lut_dir, 'schaefer200x7_original.txt')
+                mrtrix_lut_file = os.path.join(mrtrix_lut_dir, 'schaefer200x7_ordered.txt')
+                parc_T1w_nii_path = os.path.join(connectome_dir, label + '_T1w_schaefer200x7.nii.gz')
+            
+            elif atlas_name == 'schaefer400x7_T1w':
+                parc_native_path = os.path.join(freesurfer_path, 'mri', 'aparc.schaefer400x7+aseg.mgz')
+                if not os.path.exists(parc_native_path):
+                    app_error('Failed to detect ' + parc_native_path + ', should run docker image bids-freesurfer /surf_conv.py first')
+                
+                parc_lut_file = os.path.join(mrtrix_lut_dir, 'schaefer400x7_original.txt')
+                mrtrix_lut_file = os.path.join(mrtrix_lut_dir, 'schaefer400x7_ordered.txt')
+                parc_T1w_nii_path = os.path.join(connectome_dir, label + '_T1w_schaefer400x7.nii.gz')
+        
+            
+            elif atlas_name == 'schaefer100x17_T1w':
+                parc_native_path = os.path.join(freesurfer_path, 'mri', 'aparc.schaefer100x17+aseg.mgz')
+                if not os.path.exists(parc_native_path):
+                    app_error('Failed to detect ' + parc_native_path + ', should run docker image bids-freesurfer /surf_conv.py first')
+                
+                parc_lut_file = os.path.join(mrtrix_lut_dir, 'schaefer100x17_original.txt')
+                mrtrix_lut_file = os.path.join(mrtrix_lut_dir, 'schaefer100x17_ordered.txt')
+                parc_T1w_nii_path = os.path.join(connectome_dir, label + '_T1w_schaefer100x17.nii.gz')
+            
+            elif atlas_name == 'schaefer200x17_T1w':
+                parc_native_path = os.path.join(freesurfer_path, 'mri', 'aparc.schaefer200x17+aseg.mgz')
+                if not os.path.exists(parc_native_path):
+                    app_error('Failed to detect ' + parc_native_path + ', should run docker image bids-freesurfer /surf_conv.py first')
+                
+                parc_lut_file = os.path.join(mrtrix_lut_dir, 'schaefer200x17_original.txt')
+                mrtrix_lut_file = os.path.join(mrtrix_lut_dir, 'schaefer200x17_ordered.txt')
+                parc_T1w_nii_path = os.path.join(connectome_dir, label + '_T1w_schaefer200x17.nii.gz')
+            
+            elif atlas_name == 'schaefer400x17_T1w':
+                parc_native_path = os.path.join(freesurfer_path, 'mri', 'aparc.schaefer400x17+aseg.mgz')
+                if not os.path.exists(parc_native_path):
+                    app_error('Failed to detect ' + parc_native_path + ', should run docker image bids-freesurfer /surf_conv.py first')
+            
+                parc_lut_file = os.path.join(mrtrix_lut_dir, 'schaefer400x17_original.txt')
+                mrtrix_lut_file = os.path.join(mrtrix_lut_dir, 'schaefer400x17_ordered.txt')
+                parc_T1w_nii_path = os.path.join(connectome_dir, label + '_T1w_schaefer400x17.nii.gz')
 
             if atlas_name.split('_')[1] == 'T1w':
                 if not os.path.exists(freesurfer_path):
@@ -994,7 +1129,23 @@ def runSubject(args, subject_label):
                     ' -scale_length -symmetric -zero_diagonal -stat_edge mean -force')
             command('tck2connectome ' + brain_tck + ' ' + atlas_config[atlas_name]['parc_nii'] + 
                     ' ' + os.path.join(atlas_dir, atlas_name + '_invnodevol.csv') + ' -tck_weights_in ' + os.path.join(connectome_dir, 'weights.csv') +
-                    ' -scale_invnodevol -symmetric -zero_diagonal -force')      
+                    ' -scale_invnodevol -symmetric -zero_diagonal -force')
+
+            ## 保存FC网络为png
+            fig, ax = plt.subplots(figsize=(15, 15))
+            corr_mat = np.loadtxt(os.path.join(atlas_dir, atlas_name + '_connectome.csv'),delimiter=",")
+            display = plotting.plot_matrix(corr_mat,labels=list(sgm_lut['Name']),vmax=np.mean(corr_mat) + 3*np.std(corr_mat), vmin=0,reorder=False,figure=fig)
+            plt.savefig(os.path.join(atlas_dir, atlas_name + '_connectome.png'))      
+
+            fig, ax = plt.subplots(figsize=(15, 15))
+            corr_mat = np.loadtxt(os.path.join(atlas_dir, atlas_name + '_meanlength.csv'),delimiter=",")
+            display = plotting.plot_matrix(corr_mat,labels=list(sgm_lut['Name']),vmax=np.mean(corr_mat) + 3*np.std(corr_mat), vmin=0,reorder=False,figure=fig)
+            plt.savefig(os.path.join(atlas_dir, atlas_name + '_meanlength.png'))      
+
+            fig, ax = plt.subplots(figsize=(15, 15))
+            corr_mat = np.loadtxt(os.path.join(atlas_dir, atlas_name + '_invnodevol.csv'),delimiter=",")
+            display = plotting.plot_matrix(corr_mat,labels=list(sgm_lut['Name']),vmax=np.mean(corr_mat) + 3*np.std(corr_mat), vmin=0,reorder=False,figure=fig)
+            plt.savefig(os.path.join(atlas_dir, atlas_name + '_invnodevol.png'))      
         
         
         
@@ -1005,7 +1156,7 @@ def runSubject(args, subject_label):
     if os.path.exists(output_dir):
         app_warn('Found output directory existing, delete it and create a new one')
         shutil.rmtree(output_dir)
-    os.mkdir(output_dir)
+    os.makedirs(output_dir)
     
     if 'tract' in modes_ls:
         output_tract_dir = os.path.join(output_dir, 'fiber_tracts')
@@ -1022,6 +1173,9 @@ def runSubject(args, subject_label):
 
     if 'connectome' in modes_ls and os.path.exists(connectome_dir):
         shutil.copytree(connectome_dir, os.path.join(output_dir, 'connectome'))
+
+    if 'alps' in modes_ls and os.path.exists(alps_mapping_dir):
+        shutil.copytree(alps_mapping_dir, os.path.join(output_dir, 'alps_mapping'))
 
     #-----------------------------------------------------------------
     # Step 8: Visualization conversion
@@ -1100,13 +1254,14 @@ if __name__ == "__main__":
                         'provided, all sessions should be analyzed. Multiple '
                         'sessions can be specified with a space separated list.',
                         nargs="+")
-    parser.add_argument("-mode", metavar="tract|dti_para|dki_para|noddi_para|connectome",
+    parser.add_argument("-mode", metavar="tract|dti_para|dki_para|noddi_para|connectome|alps",
                         help="Which type of dMRI analysis mode to run.\n"
                              "'tract' [DEFAULT]: fiber tracking for predefined tracts.\n"
                              "'dti_para': DTI parameter mapping, generating FA/MD/AD/RD. \n"
                              "'dki_para': DKI parameter mapping, generating MK/RK/AK/KFA/MKT. \n"
                              "'noddi_para': NODDI parameter mapping, generating ICVF/IVF/ODI. \n"
                              "'connectome': structural network creation. \n"
+                             "'alps': DTI-ALPS creation. \n"
                              "multiple modes can be switched on simultaneously by seperating by comma",
                         default="tract")
 
@@ -1175,7 +1330,10 @@ if __name__ == "__main__":
     cleanup = args.cleanup
     start = time.time()
     
+    # parse bids layout
+    layout = bids.layout.BIDSLayout(args.bids_dir, derivatives=False, absolute_paths=True)
     subjects_to_analyze = []
+
     # only for a subset of subjects
     if args.participant_label:
         subjects_to_analyze = args.participant_label
@@ -1184,12 +1342,33 @@ if __name__ == "__main__":
         subject_dirs = glob.glob(os.path.join(args.bids_dir, "sub-*"))
         subjects_to_analyze = [subject_dir.split("-")[-1] for subject_dir in subject_dirs]
     subjects_to_analyze.sort()
+
+    # only use a subset of sessions
+    if args.session_label:
+        session_to_analyze = dict(session=args.session_label)
+    else:
+        session_to_analyze = dict()
     
    # running participant level
     if args.analysis_level == "participant":
-        # find all T1s 
         for subject_label in subjects_to_analyze:
-            runSubject(args, subject_label)
+            smri = [f.path for f in layout.get(subject=subject_label,suffix='T1w',extension=["nii.gz", "nii"],**session_to_analyze)]  
+
+        if os.path.normpath(smri[0]).split(os.sep)[-3].split("-")[0] == 'ses':
+            sessions = [os.path.normpath(t1).split(os.sep)[-3].split("-")[-1] for t1 in smri]
+            sessions.sort()
+        else:
+            sessions = []
+
+        if sessions:
+            for s in range(len(sessions)):  
+                session_label = sessions[s]
+                smri_analyze = [f.path for f in layout.get(subject=subject_label,session=session_label, suffix='T1w',extension=["nii.gz", "nii"])][0]
+                runSubject(args, subject_label, session_label)
+        else:
+            session_label = []
+            smri_analyze = smri[0]
+            runSubject(args, subject_label, session_label)
 
     # running group level
     elif args.analysis_level == "group":

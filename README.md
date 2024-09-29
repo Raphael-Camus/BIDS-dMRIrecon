@@ -8,6 +8,7 @@
 - Fiber tracking (*https://github.com/MIC-DKFZ/TractSeg*)
 - DKI mapping (*https://github.com/m-ama/PyDesigner*)
 - NODDI mapping (*https://github.com/daducci/AMICO*)
+- ALPS mapping (*https://github.com/gbarisano/alps*)
 - Network establishment (*tck2connectome*)
 - Visualization (*vtk/vtp files*)
 
@@ -59,6 +60,17 @@ docker run -it --rm -v <bids_root>:/bids_dataset bids-dmrirecon:latest python /r
 ```
 docker run -it --rm -v <bids_root>:/bids_dataset bids-dmrirecon:latest python /scripts/json2csv.py /bids_dataset participant
 ```
+
+## mode：
+-  `-mode`: Which type of dMRI analysis mode to run
+
+-  `-mode tract`: fiber tracking for predefined tracts (default)
+-  `-mode dti_para`: DTI parameter mapping, generating FA/MD/AD/RD.
+-  `-mode alps`: DTI-ALPS parameter mapping
+-  `-mode dki_para`: DKI parameter mapping, generating MK/RK/AK/KFA/MKT.
+-  `-mode noddi_para`: NODDI parameter mapping, generating ICVF/IVF/ODI.
+-  `-mode connectome`: structural network creation.
+
 
 ## Input Argument
 ####   positional argument:

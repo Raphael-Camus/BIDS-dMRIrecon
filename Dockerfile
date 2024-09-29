@@ -1,4 +1,4 @@
-FROM mindsgo-sz-docker.pkg.coding.net/neuroimage_analysis/base/msg_baseimage_cuda11:deepFS
+FROM mindsgo-sz-docker.pkg.coding.net/neuroimage_analysis/base/msg_baseimage_fullfsl:v1
 MAINTAINER Chenfei <chenfei.ye@foxmail.com>
 
 # install prerequisite for python-spams 
@@ -21,7 +21,7 @@ RUN pip install -i https://mirrors.aliyun.com/pypi/simple/ scikit-image \
 	python-spams
 
 # TractSeg install
-RUN pip install -i https://mirrors.aliyun.com/pypi/simple/ TractSeg==2.8 
+RUN pip install -i https://mirrors.aliyun.com/pypi/simple/ TractSeg==2.9 
 
 # RUN download_all_pretrained_weights
 RUN	mkdir /root/.tractseg && \
@@ -29,10 +29,11 @@ RUN	mkdir /root/.tractseg && \
 	unzip -d /root/.tractseg /root/.tractseg/tractseg.zip && \
 	rm /root/.tractseg/tractseg.zip
 	
-
+RUN pip install -i https://mirrors.aliyun.com/pypi/simple/ nilearn
 ADD ./ /
 COPY /atlases /pipeline/atlases
 # COPY ./TractSeg_scripts/img_utils.py /opt/conda/lib/python3.8/site-packages/tractseg/libs/   
 # COPY ./TractSeg_scripts/tractseg_prob_tracking.py /opt/conda/lib/python3.8/site-packages/tractseg/libs/
 RUN chmod +x /Roi3D/VtpRoi3DGenerator
+
 CMD ["python3", "/run.py"]

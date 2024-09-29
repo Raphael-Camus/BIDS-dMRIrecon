@@ -8,6 +8,7 @@
 - 纤维追踪与定量 (*https://github.com/MIC-DKFZ/TractSeg*)
 - DKI定量参数计算 (*https://github.com/m-ama/PyDesigner*)
 - NODDI定量参数计算 (*https://github.com/daducci/AMICO*)
+- ALPS定量参数计算 (*https://github.com/gbarisano/alps*)
 - 脑结构网络生成 (*tck2connectome*)
 - 可视化 (*vtk/vtp files*)
 
@@ -69,7 +70,15 @@ docker run -it --rm -v <bids_root>:/bids_dataset bids-dmrirecon:latest python /r
 docker run -it --rm -v <bids_root>:/bids_dataset bids-dmrirecon:latest python /scripts/json2csv.py /bids_dataset participant
 ```
 
+## 运行模式说明：
+-  `-mode`：对应不同的分析模式，支持多模式同时跑，用逗号间隔。默认为`tract`。
 
+-  `-mode tract`：对应白质纤维束自动分割
+-  `-mode dti_para`：对应生成DTI参数
+-  `-mode alps`：对应生成TDI参数
+-  `-mode dki_para`：对应生成DKI参数
+-  `-mode noddi_para`：对应生成NODDI参数
+-  `-mode connectome`：对应生成脑结构网络
 
 ## 参数说明
 ####   固定参数说明：
