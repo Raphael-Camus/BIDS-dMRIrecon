@@ -508,6 +508,18 @@ def runSubject(args, subject_label, session_label):
         for value in mrinfo(input_dwi_mif, 'shell_bvalues').strip().split()]
     multishell = (len(bvalues) > 2)
 
+    # check if freesurfer_path exists
+    if session_label:
+        freesurfer_path = os.path.join(args.bids_dir, 'derivatives', 'freesurfer', label + '_ses-' + session_label)
+    else:
+        freesurfer_path = os.path.join(args.bids_dir, 'derivatives', 'freesurfer', label)
+
+    atlases_ls = args.atlases
+    for atlas_name in atlases_ls:
+        if 'connectome' in modes_ls and atlas_name[-3:]=='T1w' :
+            if not os.path.exists(freesurfer_path):
+                app_error('Failed to detect freesurfer_path: ' + freesurfer_path)
+
     #-----------------------------------------------------------------
     # Step 1: DTI parameter mapping
     #-----------------------------------------------------------------
@@ -1001,7 +1013,6 @@ def runSubject(args, subject_label, session_label):
         
 
         # process for atlases
-        freesurfer_path = os.path.join(args.bids_dir, 'derivatives', 'freesurfer', label)
         mrtrix_lut_dir = os.path.join('/mrtrix3', 'labelconvert')
         atlases_ls = args.atlases
         for atlas_name in atlases_ls:
