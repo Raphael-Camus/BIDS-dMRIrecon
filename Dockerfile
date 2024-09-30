@@ -29,7 +29,7 @@ RUN	mkdir /root/.tractseg && \
 	unzip -d /root/.tractseg /root/.tractseg/tractseg.zip && \
 	rm /root/.tractseg/tractseg.zip
 	
-RUN pip install -i https://mirrors.aliyun.com/pypi/simple/ nilearn
+RUN pip install -i https://mirrors.aliyun.com/pypi/simple/ nilearn pybids torch==1.11.0
 ADD ./ /
 COPY /atlases /pipeline/atlases
 # COPY ./TractSeg_scripts/img_utils.py /opt/conda/lib/python3.8/site-packages/tractseg/libs/   

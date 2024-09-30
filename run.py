@@ -415,10 +415,12 @@ def runSubject(args, subject_label, session_label):
     global workingDir, tempDir, cleanup, resume
     label = 'sub-' + subject_label
     if session_label:
+        t1prep_dir = os.path.join(args.bids_dir, 'derivatives', 'smri_prep', label,  'ses-' + session_label)
         dmriprep_dir = os.path.join(args.bids_dir, 'derivatives', 'dmri_prep', label,  'ses-' + session_label)
         output_dir = os.path.join(args.output_dir, label,  'ses-' + session_label)
         app_console('Launching participant-level analysis for subject \'' + label + '\'' + ' and session \'' + session_label + '\'')
     else:
+        t1prep_dir = os.path.join(args.bids_dir, 'derivatives', 'smri_prep', label)
         dmriprep_dir = os.path.join(args.bids_dir, 'derivatives', 'dmri_prep', label)
         output_dir = os.path.join(args.output_dir, label)
         app_console('Launching participant-level analysis for subject \'' + label + '\'')
@@ -472,7 +474,7 @@ def runSubject(args, subject_label, session_label):
     no_vtp = args.no_vtp
 
     start = time.time()
-    t1prep_dir = os.path.join(args.bids_dir, 'derivatives', 'smri_prep', label)
+    
     input_dwi_nii = os.path.join(dmriprep_dir, 'dwi.nii.gz')
     input_dwi_bval = os.path.join(dmriprep_dir, 'dwi.bval')
     input_dwi_bvec = os.path.join(dmriprep_dir, 'dwi.bvec')
