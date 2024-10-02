@@ -519,6 +519,9 @@ def runSubject(args, subject_label, session_label):
         if 'connectome' in modes_ls and atlas_name[-3:]=='T1w' :
             if not os.path.exists(freesurfer_path):
                 app_error('Failed to detect freesurfer_path: ' + freesurfer_path)
+            lh_HCPMMP1_annot_path = os.path.join(freesurfer_path, 'label', 'lh.HCPMMP1.annot')
+            if not os.path.exists(lh_HCPMMP1_annot_path):
+                app_error('Failed to detect ' + lh_HCPMMP1_annot_path + ' , should run docker image bids-freesurfer /surf_conv.py first')
 
     #-----------------------------------------------------------------
     # Step 1: DTI parameter mapping
@@ -917,7 +920,10 @@ def runSubject(args, subject_label, session_label):
     #-----------------------------------------------------------------
     if 'noddi_para' in modes_ls:
         app_console('Step 5: NODDI parameter mapping ')
-        noddi_mapping_dir = os.path.join(tempDir, label, 'AMICO', 'NODDI')
+        if session_label:
+            noddi_mapping_dir = os.path.join(tempDir, 'ses-'+session_label, 'AMICO', 'NODDI')
+        else:
+            noddi_mapping_dir = os.path.join(tempDir, label, 'AMICO', 'NODDI')
         img = dp.DWI(imPath=input_dwi_nii, bvecPath = input_dwi_bvec, 
                         bvalPath = input_dwi_bval, mask = input_dwi_mask_nii)
         if args.resume and os.path.exists(noddi_mapping_dir):  # if -resume, check if output file exist or not
@@ -1355,6 +1361,7 @@ if __name__ == "__main__":
         subject_dirs = glob.glob(os.path.join(args.bids_dir, "sub-*"))
         subjects_to_analyze = [subject_dir.split("-")[-1] for subject_dir in subject_dirs]
     subjects_to_analyze.sort()
+    app_console('subjects to be analyzed: ' + ' '.join(subjects_to_analyze))
 
     # only use a subset of sessions
     if args.session_label:
@@ -1367,21 +1374,19 @@ if __name__ == "__main__":
         for subject_label in subjects_to_analyze:
             smri = [f.path for f in layout.get(subject=subject_label,suffix='T1w',extension=["nii.gz", "nii"],**session_to_analyze)]  
 
-        if os.path.normpath(smri[0]).split(os.sep)[-3].split("-")[0] == 'ses':
-            sessions = [os.path.normpath(t1).split(os.sep)[-3].split("-")[-1] for t1 in smri]
-            sessions.sort()
-        else:
-            sessions = []
+            if os.path.normpath(smri[0]).split(os.sep)[-3].split("-")[0] == 'ses':
+                sessions = [os.path.normpath(t1).split(os.sep)[-3].split("-")[-1] for t1 in smri]
+                sessions.sort()
+            else:
+                sessions = []
 
-        if sessions:
-            for s in range(len(sessions)):  
-                session_label = sessions[s]
-                smri_analyze = [f.path for f in layout.get(subject=subject_label,session=session_label, suffix='T1w',extension=["nii.gz", "nii"])][0]
+            if sessions:
+                for s in range(len(sessions)):  
+                    session_label = sessions[s]
+                    runSubject(args, subject_label, session_label)
+            else:
+                session_label = []
                 runSubject(args, subject_label, session_label)
-        else:
-            session_label = []
-            smri_analyze = smri[0]
-            runSubject(args, subject_label, session_label)
 
     # running group level
     elif args.analysis_level == "group":
